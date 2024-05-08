@@ -12,9 +12,38 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+app.use(cookeParser());
 
 const port = process.env.PORT || 5000;
 
+
+// middlewares
+
+const logger = async(req, res, next) => {
+  console.log('called: ', req.originalUrl);
+  // res.send(req.originalUrl);
+  next();
+}
+
+const verifyToken = (req, res, next) => {
+  const token = req.cookies?.['amr token'];
+  
+  if(!token) {
+    console.log('no token');
+    return res.status(401).send({message: 'not authorized'})
+  }
+
+  jwt.verify(token, process.env.SECRET, (err, decoded) => {
+    if(err) {
+      return res.send({message: 'error happened', err: err})
+    }
+
+    console.log('value in the token', decoded);
+    next();
+  })
+
+  // console.log(token);
+}
 
 
 const uri = `mongodb+srv://${process.env.USER}:${process.env.PASS}@mydatabase.ofrvnz1.mongodb.net/?retryWrites=true&w=majority&appName=mydatabase`;
@@ -35,22 +64,28 @@ async function run() {
     const tools = database.collection('tools');
 
     // jwt token generate
-    app.post('/jwt', async(req, res) => {
+    app.post('/jwt', logger, async(req, res) => {
       const user = req.body;
+      const cookie = req.cookies;
+      console.log(user);
       const token =  jwt.sign(user, process.env.SECRET, {expiresIn: '1h'})
-      res.send(token);
+      console.log(cookie);
+      res
+      .cookie('amr token', token, {httpOnly: true, secure: false})
+      .send(token);
     })
 
 
     // get all the docs
-    app.get('/', async(req, res) => {
+    app.get('/', verifyToken,async(req, res) => {
       const cursor = tools.find();
       const result = await cursor.toArray();
+      console.log('sent result again again');
       res.send(result);
     })
 
     // add a tool
-    app.post('/add', async(req, res) => {
+    app.post('/add',  async(req, res) => {
       const tool = req.body;
       console.log('tool: ', tool);
       const result = await tools.insertOne(tool);
